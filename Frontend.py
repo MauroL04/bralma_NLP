@@ -1,29 +1,11 @@
 import subprocess
 import sys
-
-# Auto-install required packages if missing
-def install_requirements():
-    """Install required packages if they're not already installed"""
-    required_packages = {
-        'streamlit': 'streamlit>=1.28.0',
-        'PyPDF2': 'PyPDF2>=3.0.0'
-    }
-    
-    for package_name, package_spec in required_packages.items():
-        try:
-            __import__(package_name)
-        except ImportError:
-            print(f"Installing {package_name}...")
-            subprocess.check_call([sys.executable, "-m", "pip", "install", package_spec])
-            print(f"✅ {package_name} installed successfully!")
-
-# Run installation check
-install_requirements()
-
 import streamlit as st
 from pathlib import Path
 import PyPDF2
 from datetime import datetime
+from groq_llm import ask_question
+
 
 # Page configuration
 st.set_page_config(
@@ -219,20 +201,16 @@ def extract_text_from_pdf(pdf_file):
 
 def get_bot_response(user_question, pdf_context):
     """
-    TODO: Replace this with your actual LLM integration
-    This is a placeholder function that should be connected to your LLM
+    Calls the ask_question function from groq.py to get an LLM answer.
+    If a PDF is uploaded, include its text as context.
     """
-    # Placeholder response - integrate your LLM here
-    if not pdf_context:
-        return "Please upload a PDF file first before asking questions."
     
-    # Example: You would call your LLM here with the context and question
-    # response = your_llm_function(context=pdf_context, question=user_question)
+    if pdf_context:
+        prompt = f"{user_question}\n\nContext uit PDF:\n{pdf_context[:1500]}"
+    else:
+        prompt = user_question
     
-    response = f"Based on the uploaded PDF, here's my response to: '{user_question}'\n\n"
-    response += "[This is a placeholder response. Please integrate your LLM model here to process the PDF content and answer questions.]"
-    
-    return response
+    return ask_question(prompt)
 
 # App header
 st.title("What's on the agenda today?")

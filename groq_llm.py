@@ -1,16 +1,3 @@
-
-# Create a new virtual environment in the current folder
-# rm -rf .venv; python3 -m venv .venv
-
-# Activate the virtual environment
-# source .venv/bin/activate
-
-# Upgrade pip and install all requirements
-# python -m pip install --upgrade pip; python -m pip install -r requirements.txt
-
-# Run the groq script
-# python groq.py
-
 from dotenv import load_dotenv
 from groq import Groq
 import os
