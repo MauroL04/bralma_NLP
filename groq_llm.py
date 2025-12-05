@@ -20,3 +20,17 @@ def ask_question(question):
         model="llama-3.3-70b-versatile",
     )
     return chat_completion.choices[0].message.content
+
+
+def ask_question_with_context(question, context=""):
+    if not groq_key:
+        return "GROQ API key ontbreekt!"
+    prompt = question
+    if context:
+        prompt = f"Context:\n{context}\n\nVraag:\n{question}"
+    client = Groq(api_key=groq_key)
+    chat_completion = client.chat.completions.create(
+        messages=[{"role": "user", "content": prompt}],
+        model="llama-3.3-70b-versatile",
+    )
+    return chat_completion.choices[0].message.content
