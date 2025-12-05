@@ -2,10 +2,15 @@ import os
 from io import BytesIO
 from typing import List
 from datetime import datetime
-import fitz
+try:
+    import fitz
+    HAS_FITZ = True
+except Exception:
+    fitz = None
+    HAS_FITZ = False
+    import PyPDF2
 import numpy as np
 import chromadb
-from chromadb.config import Settings
 from sentence_transformers import SentenceTransformer
 from transformers import CLIPModel, CLIPProcessor
 from PIL import Image
@@ -26,28 +31,37 @@ except Exception:
 text_model = SentenceTransformer("all-MiniLM-L6-v2", device=device)
 clip_model = CLIPModel.from_pretrained("openai/clip-vit-large-patch14").to(device)
 clip_processor = CLIPProcessor.from_pretrained("openai/clip-vit-large-patch14")
-client = chromadb.Client(Settings(chroma_db_impl="duckdb+parquet", persist_directory=PERSIST_DIR))
+client = chromadb.PersistentClient(path=PERSIST_DIR)
 
 
 def _extract_pages(file_bytes: bytes) -> List[dict]:
-    doc = fitz.open(stream=file_bytes, filetype="pdf")
     pages = []
-    for i in range(len(doc)):
-        page = doc.load_page(i)
-        text = page.get_text("text")
-        images = []
-        for img in page.get_images(full=True):
-            xref = img[0]
-            pix = fitz.Pixmap(doc, xref)
-            if pix.n < 4:
-                img_bytes = pix.tobytes("png")
-            else:
-                pix0 = fitz.Pixmap(fitz.csRGB, pix)
-                img_bytes = pix0.tobytes("png")
-                pix0 = None
-            pix = None
-            images.append(img_bytes)
-        pages.append({"page_number": i + 1, "text": text or "", "images": images})
+    if HAS_FITZ:
+        doc = fitz.open(stream=file_bytes, filetype="pdf")
+        for i in range(len(doc)):
+            page = doc.load_page(i)
+            text = page.get_text("text")
+            images = []
+            for img in page.get_images(full=True):
+                xref = img[0]
+                pix = fitz.Pixmap(doc, xref)
+                if pix.n < 4:
+                    img_bytes = pix.tobytes("png")
+                else:
+                    pix0 = fitz.Pixmap(fitz.csRGB, pix)
+                    img_bytes = pix0.tobytes("png")
+                    pix0 = None
+                pix = None
+                images.append(img_bytes)
+            pages.append({"page_number": i + 1, "text": text or "", "images": images})
+    else:
+        reader = PyPDF2.PdfReader(BytesIO(file_bytes))
+        for i, page in enumerate(reader.pages):
+            try:
+                text = page.extract_text() or ""
+            except Exception:
+                text = ""
+            pages.append({"page_number": i + 1, "text": text, "images": []})
     return pages
 
 
@@ -80,19 +94,20 @@ def ingest_pdf(file_bytes: bytes, filename: str) -> dict:
     embeddings = []
     for p in pages:
         page_text = p["text"].strip()
-        text_chunks = [page_text] if len(page_text) <= 1200 else [page_text[i:i+1000] for i in range(0, len(page_text), 900)]
+        # No logging here
+        text_chunks = [page_text]
         image_embs = _embed_image_bytes_list(p["images"]) if p["images"] else np.array([])
         for idx, chunk in enumerate(text_chunks, start=1):
             text_emb = _embed_texts([chunk])[0]
             if image_embs.size:
                 img_mean = image_embs.mean(axis=0)
-                combined = (text_emb + img_mean) / 2
+                combined = np.concatenate([text_emb, img_mean])
             else:
-                combined = text_emb
+                combined = np.concatenate([text_emb, np.zeros(768)])
             uid = f"{filename}::p{p['page_number']}::c{idx}::{datetime.utcnow().timestamp()}"
             ids.append(uid)
             documents.append(chunk)
-            metadatas.append({"source": filename, "page": p["page_number"], "chunk": idx, "image_count": len(p["images"])})
+            metadatas.append({"source": filename, "page": p["page_number"], "chunk": idx, "image_count": len(p["images"])} )
             embeddings.append(combined.tolist())
     if not os.path.isdir(PERSIST_DIR):
         os.makedirs(PERSIST_DIR, exist_ok=True)
@@ -105,7 +120,9 @@ def ingest_pdf(file_bytes: bytes, filename: str) -> dict:
 
 
 def query(question: str, k: int = 4) -> List[dict]:
-    q_emb = _embed_texts([question])[0].tolist()
+    text_emb = _embed_texts([question])[0]
+    # Pad with zeros for image part so query embedding matches chunk embedding length
+    q_emb = np.concatenate([text_emb, np.zeros(768)]).tolist()
     try:
         collection = client.get_collection(name=COLLECTION_NAME)
     except Exception:
@@ -121,12 +138,13 @@ def query(question: str, k: int = 4) -> List[dict]:
 
 
 def get_context_for_question(question: str, k: int = 4) -> str:
-    hits = query(question, k=k)
+    hits = query(question, k=10)
     parts = []
     for i, h in enumerate(hits, start=1):
         src = h.get("metadata", {}).get("source", "unknown")
         parts.append(f"--- Source: {src} | Chunk {i} | Score: {h.get('score'):.4f} ---\n{h.get('page_content')}\n")
-    return "\n".join(parts)
+    context = "\n".join(parts)
+    return context
 
 
 __all__ = ["ingest_pdf", "query", "get_context_for_question"]

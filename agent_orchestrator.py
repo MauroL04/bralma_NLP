@@ -8,7 +8,8 @@ def ingest_and_store_pdf(file_bytes: bytes, filename: str) -> Dict:
 
 
 def answer_question(question: str, k: int = 4) -> Dict:
-    context = get_context_for_question(question, k=k)
+    context = get_context_for_question(question, k=10)
+    print("[Orchestrator] Context sent to LLM:\n" + context[:1000])
     if context:
         answer = groq_llm.ask_question_with_context(question, context)
     else:
