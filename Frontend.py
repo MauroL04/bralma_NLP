@@ -4,7 +4,7 @@ import streamlit as st
 from pathlib import Path
 import PyPDF2
 from datetime import datetime
-from groq_llm import ask_question
+from agent_orchestrator import ingest_and_store_pdf, answer_question
 
 
 # Page configuration
@@ -204,13 +204,8 @@ def get_bot_response(user_question, pdf_context):
     Calls the ask_question function from groq.py to get an LLM answer.
     If a PDF is uploaded, include its text as context.
     """
-    
-    if pdf_context:
-        prompt = f"{user_question}\n\nContext uit PDF:\n{pdf_context[:1500]}"
-    else:
-        prompt = user_question
-    
-    return ask_question(prompt)
+    res = answer_question(user_question)
+    return res.get("answer", "Geen antwoord beschikbaar.")
 
 # App header
 st.title("What's on the agenda today?")
@@ -227,10 +222,14 @@ uploaded_file = st.file_uploader(
 if uploaded_file is not None:
     if uploaded_file.name != st.session_state.uploaded_filename:
         with st.spinner("Processing PDF..."):
-            st.session_state.pdf_text = extract_text_from_pdf(uploaded_file)
-            st.session_state.pdf_uploaded = True
-            st.session_state.uploaded_filename = uploaded_file.name
-            st.session_state.messages = []  # Clear previous conversation
+            try:
+                ingest_and_store_pdf(uploaded_file.read(), uploaded_file.name)
+                st.session_state.pdf_text = ""
+                st.session_state.pdf_uploaded = True
+                st.session_state.uploaded_filename = uploaded_file.name
+                st.session_state.messages = []
+            except Exception as e:
+                st.error(f"Fout bij PDF-ingestie: {e}")
 
 # Display file badge if PDF is uploaded
 if st.session_state.pdf_uploaded:
