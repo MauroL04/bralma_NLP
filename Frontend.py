@@ -4,7 +4,7 @@ import streamlit as st
 from pathlib import Path
 import PyPDF2
 from datetime import datetime
-from groq_llm import ask_question
+from groq_answer_llm import answer_and_maybe_quiz
  
  
 # Page configuration
@@ -214,17 +214,11 @@ def get_combined_pdf_context():
  
 def get_bot_response(user_question):
     """
-    Calls the ask_question function from groq_llm.py to get an LLM answer.
+    Calls the answer_and_maybe_quiz function from groq_answer_llm.py to get an LLM answer.
     If PDFs are uploaded, include their combined text as context.
     """
     pdf_context = get_combined_pdf_context()
-   
-    if pdf_context:
-        prompt = f"{user_question}\n\nContext from uploaded documents:\n{pdf_context}"
-    else:
-        prompt = user_question
-   
-    return ask_question(prompt)
+    return answer_and_maybe_quiz(user_question, pdf_context)
  
 # Sidebar for uploaded files overview
 with st.sidebar:
