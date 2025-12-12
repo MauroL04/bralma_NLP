@@ -11,16 +11,21 @@ from groq_llm import ask_question
 st.set_page_config(
     page_title="PDF Chat Assistant",
     page_icon="💬",
-    layout="centered",
-    initial_sidebar_state="collapsed"
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
 
 # Custom CSS for chatbot design
 st.markdown("""
     <style>
-    /* Hide sidebar */
+    /* Sidebar styling */
     [data-testid="stSidebar"] {
-        display: none;
+        background-color: #1e1e1e;
+        border-right: 1px solid #404040;
+    }
+    
+    [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] {
+        color: #e0e0e0;
     }
     
     /* Main container styling */
@@ -181,12 +186,8 @@ st.markdown("""
 # Initialize session state
 if 'messages' not in st.session_state:
     st.session_state.messages = []
-if 'pdf_text' not in st.session_state:
-    st.session_state.pdf_text = ""
-if 'pdf_uploaded' not in st.session_state:
-    st.session_state.pdf_uploaded = False
-if 'uploaded_filename' not in st.session_state:
-    st.session_state.uploaded_filename = ""
+if 'uploaded_pdfs' not in st.session_state:
+    st.session_state.uploaded_pdfs = []  # List of dicts: [{"filename": "...", "text": "..."}]
 
 def extract_text_from_pdf(pdf_file):
     """Extract text from uploaded PDF file"""
@@ -199,23 +200,62 @@ def extract_text_from_pdf(pdf_file):
     except Exception as e:
         return f"Error extracting text: {str(e)}"
 
-def get_bot_response(user_question, pdf_context):
+def get_combined_pdf_context():
+    """Combine all uploaded PDF texts into one context string"""
+    if not st.session_state.uploaded_pdfs:
+        return ""
+    
+    combined = ""
+    for idx, pdf in enumerate(st.session_state.uploaded_pdfs):
+        combined += f"\n\n=== Document {idx+1}: {pdf['filename']} ===\n"
+        combined += pdf['text'][:3000]  # Limit each PDF to avoid token overflow
+    
+    return combined
+
+def get_bot_response(user_question):
     """
-    Calls the ask_question function from groq.py to get an LLM answer.
-    If a PDF is uploaded, include its text as context.
+    Calls the ask_question function from groq_llm.py to get an LLM answer.
+    If PDFs are uploaded, include their combined text as context.
     """
+    pdf_context = get_combined_pdf_context()
     
     if pdf_context:
-        prompt = f"{user_question}\n\nContext uit PDF:\n{pdf_context[:1500]}"
+        prompt = f"{user_question}\n\nContext from uploaded documents:\n{pdf_context}"
     else:
         prompt = user_question
     
     return ask_question(prompt)
 
+# Sidebar for uploaded files overview
+with st.sidebar:
+    st.header("📚 Uploaded Documents")
+    
+    if st.session_state.uploaded_pdfs:
+        st.markdown(f"**{len(st.session_state.uploaded_pdfs)} file(s) uploaded**")
+        st.markdown("---")
+        
+        for idx, pdf in enumerate(st.session_state.uploaded_pdfs):
+            col1, col2 = st.columns([4, 1])
+            with col1:
+                st.markdown(f"📄 **{pdf['filename']}**")
+                st.caption(f"{len(pdf['text'])} characters")
+            with col2:
+                if st.button("🗑️", key=f"remove_{idx}", help="Remove file"):
+                    st.session_state.uploaded_pdfs.pop(idx)
+                    st.rerun()
+        
+        st.markdown("---")
+        if st.button("🗑️ Clear All", use_container_width=True):
+            st.session_state.uploaded_pdfs = []
+            st.session_state.messages = []
+            st.rerun()
+    else:
+        st.info("No files uploaded yet")
+
 # App header
 st.title("What's on the agenda today?")
 
-# File upload section (hidden but functional for drag & drop)
+# File upload section (same drag & drop as before)
 uploaded_file = st.file_uploader(
     "Drop your PDF file here",
     type=['pdf'],
@@ -225,27 +265,27 @@ uploaded_file = st.file_uploader(
 
 # Process uploaded file
 if uploaded_file is not None:
-    if uploaded_file.name != st.session_state.uploaded_filename:
+    # Check if file already exists
+    existing_names = [pdf['filename'] for pdf in st.session_state.uploaded_pdfs]
+    
+    if uploaded_file.name not in existing_names:
         with st.spinner("Processing PDF..."):
-            st.session_state.pdf_text = extract_text_from_pdf(uploaded_file)
-            st.session_state.pdf_uploaded = True
-            st.session_state.uploaded_filename = uploaded_file.name
-            st.session_state.messages = []  # Clear previous conversation
-
-# Display file badge if PDF is uploaded
-if st.session_state.pdf_uploaded:
-    st.markdown(f"""
-        <div class="file-badge">
-            📄 {st.session_state.uploaded_filename}
-        </div>
-        """, unsafe_allow_html=True)
+            text = extract_text_from_pdf(uploaded_file)
+            st.session_state.uploaded_pdfs.append({
+                "filename": uploaded_file.name,
+                "text": text
+            })
+        st.success(f"✅ Added {uploaded_file.name}")
+        st.rerun()
+    else:
+        st.info(f"📄 {uploaded_file.name} is already uploaded")
 
 # Display welcome message or chat history
 if not st.session_state.messages:
-    if not st.session_state.pdf_uploaded:
+    if not st.session_state.uploaded_pdfs:
         st.markdown('<div class="subtitle">Drop a PDF file to get started, or ask me anything</div>', unsafe_allow_html=True)
     else:
-        st.markdown('<div class="subtitle">PDF loaded! Ask me anything about the document.</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="subtitle">{len(st.session_state.uploaded_pdfs)} PDF(s) loaded! Ask me anything about the documents.</div>', unsafe_allow_html=True)
 else:
     # Display chat history
     chat_container = st.container()
@@ -282,7 +322,7 @@ if user_input:
     
     # Get bot response
     with st.spinner("🤔 Thinking..."):
-        bot_response = get_bot_response(user_input, st.session_state.pdf_text)
+        bot_response = get_bot_response(user_input)
     
     # Add bot response to chat
     st.session_state.messages.append({
