@@ -3,6 +3,7 @@ import sys
 import streamlit as st
 from pathlib import Path
 import PyPDF2
+from pptx import Presentation
 from datetime import datetime
 from groq_answer_llm import answer_and_maybe_quiz
  
@@ -199,6 +200,19 @@ def extract_text_from_pdf(pdf_file):
         return text
     except Exception as e:
         return f"Error extracting text: {str(e)}"
+
+def extract_text_from_ppt(ppt_file):
+    """Extract text from uploaded PowerPoint file"""
+    try:
+        prs = Presentation(ppt_file)
+        text = ""
+        for slide in prs.slides:
+            for shape in slide.shapes:
+                if hasattr(shape, "text"):
+                    text += shape.text + "\n"
+        return text
+    except Exception as e:
+        return f"Error extracting text: {str(e)}"
  
 def get_combined_pdf_context():
     """Combine all uploaded PDF texts into one context string"""
@@ -249,11 +263,11 @@ with st.sidebar:
 # App header
 st.title("What's on the agenda today?")
  
-# File upload section (same drag & drop as before)
+# File upload section (drag & drop for PDF and PPT)
 uploaded_file = st.file_uploader(
-    "Drop your PDF file here",
-    type=['pdf'],
-    help="Drag and drop a PDF file to upload",
+    "Drop your PDF or PowerPoint file here",
+    type=['pdf', 'ppt', 'pptx'],
+    help="Drag and drop a PDF or PowerPoint file to upload",
     label_visibility="collapsed"
 )
  
@@ -263,21 +277,32 @@ if uploaded_file is not None:
     existing_names = [pdf['filename'] for pdf in st.session_state.uploaded_pdfs]
    
     if uploaded_file.name not in existing_names:
-        with st.spinner("Processing PDF..."):
-            text = extract_text_from_pdf(uploaded_file)
-            st.session_state.uploaded_pdfs.append({
-                "filename": uploaded_file.name,
-                "text": text
-            })
-        st.success(f"✅ Added {uploaded_file.name}")
-        st.rerun()
+        with st.spinner(f"Processing {uploaded_file.type}..."):
+            # Extract text based on file type
+            if uploaded_file.type == "application/pdf":
+                text = extract_text_from_pdf(uploaded_file)
+            elif uploaded_file.type in ["application/vnd.ms-powerpoint", "application/vnd.openxmlformats-officedocument.presentationml.presentation"]:
+                text = extract_text_from_ppt(uploaded_file)
+            else:
+                text = ""
+                st.error(f"Unsupported file type: {uploaded_file.type}")
+            
+            if text and not text.startswith("Error"):
+                st.session_state.uploaded_pdfs.append({
+                    "filename": uploaded_file.name,
+                    "text": text
+                })
+                st.success(f"✅ Added {uploaded_file.name}")
+                st.rerun()
+            else:
+                st.error(f"Failed to extract text from {uploaded_file.name}")
     else:
         st.info(f"📄 {uploaded_file.name} is already uploaded")
  
 # Display welcome message or chat history
 if not st.session_state.messages:
     if not st.session_state.uploaded_pdfs:
-        st.markdown('<div class="subtitle">Drop a PDF file to get started, or ask me anything</div>', unsafe_allow_html=True)
+        st.markdown('<div class="subtitle">Drop a PDF or PowerPoint file to get started, or ask me anything</div>', unsafe_allow_html=True)
     else:
         st.markdown(f'<div class="subtitle">{len(st.session_state.uploaded_pdfs)} PDF(s) loaded! Ask me anything about the documents.</div>', unsafe_allow_html=True)
 else:
