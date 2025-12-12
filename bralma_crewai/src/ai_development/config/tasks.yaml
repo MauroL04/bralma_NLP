@@ -23,19 +23,3 @@ answer_question:
     A comprehensive answer with optional quiz questions for learning reinforcement.
   agent: pdf_answering_agent
 
-handle_conversation:
-  description: >
-    Handle follow-up questions and maintain conversation context.
-    Use previous context to answer related questions coherently.
-  expected_output: >
-    Contextual answer that builds on previous exchanges.
-  agent: pdf_conversation_agent
-
-process_user_request:
-  description: >
-    Orchestrate the complete PDF processing workflow.
-    Coordinate between PDF retrieval and question answering.
-    Use process_pdf_question_tool for end-to-end processing.
-  expected_output: >
-    Complete answer with context and relevant quiz for learning.
-  agent: pdf_orchestrator_agent

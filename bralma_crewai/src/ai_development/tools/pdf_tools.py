@@ -1,7 +1,7 @@
 """PDF ingestion and retrieval tools for CrewAI"""
 import sys
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict
 from crewai.tools import tool
 
 # Voeg parent directory toe aan path
@@ -97,42 +97,8 @@ def answer_question_with_context_tool(question: str, context: str = "") -> Dict:
         }
 
 
-@tool
-def process_pdf_question_tool(question: str, k: int = 4) -> Dict:
-    """
-    End-to-end tool: retrieve context from PDFs and answer question with Groq LLM.
-    
-    Args:
-        question: The user's question
-        k: Number of context chunks to retrieve
-    
-    Returns:
-        Dict with answer and context
-    """
-    try:
-        # Stap 1: Context ophalen
-        context = get_context_for_question(question, k=k)
-        
-        # Stap 2: Antwoord genereren
-        answer = groq_answer_llm.answer_and_maybe_quiz(question, context)
-        
-        return {
-            "status": "success",
-            "question": question,
-            "answer": answer,
-            "context": context
-        }
-    except Exception as e:
-        return {
-            "status": "error",
-            "question": question,
-            "error": str(e)
-        }
-
-
 __all__ = [
     "ingest_pdf_tool",
     "retrieve_context_tool", 
-    "answer_question_with_context_tool",
-    "process_pdf_question_tool"
+    "answer_question_with_context_tool"
 ]

@@ -6,8 +6,7 @@ from dotenv import load_dotenv
 from .tools.pdf_tools import (
     ingest_pdf_tool, 
     retrieve_context_tool,
-    answer_question_with_context_tool,
-    process_pdf_question_tool
+    answer_question_with_context_tool
 )
 
 # Load environment variables
@@ -52,22 +51,6 @@ class PDFProcessingCrew():
             verbose=True
         )
 
-    @agent
-    def pdf_conversation_agent(self) -> Agent:
-        return Agent(
-            config=self.agents_config['pdf_conversation_agent'],
-            tools=[process_pdf_question_tool, retrieve_context_tool],
-            verbose=True
-        )
-
-    @agent
-    def pdf_orchestrator_agent(self) -> Agent:
-        return Agent(
-            config=self.agents_config['pdf_orchestrator_agent'],
-            tools=[process_pdf_question_tool, ingest_pdf_tool],
-            verbose=True
-        )
-
     # Tasks - PDF Processing workflow
     @task
     def ingest_pdf(self) -> Task:
@@ -89,20 +72,6 @@ class PDFProcessingCrew():
             depends_on=[self.retrieve_context()]
         )
 
-    @task
-    def handle_conversation(self) -> Task:
-        return Task(
-            config=self.tasks_config['handle_conversation'],
-            depends_on=[self.answer_question()]
-        )
-
-    @task
-    def process_user_request(self) -> Task:
-        return Task(
-            config=self.tasks_config['process_user_request'],
-            depends_on=[self.handle_conversation()]
-        )
-
     @crew
     def crew(self) -> Crew:
         """Creates the PDFProcessingCrew"""
@@ -113,3 +82,4 @@ class PDFProcessingCrew():
             verbose=True,
             memory=False  # Disabled to avoid OpenAI embedding requirement
         )
+
