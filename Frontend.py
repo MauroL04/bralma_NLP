@@ -4,7 +4,7 @@ import streamlit as st
 from pathlib import Path
 import PyPDF2
 from datetime import datetime
-from agent_orchestrator import ingest_and_store_pdf, answer_question
+from agent_orchestrator import ingest_and_store_pdf_langchain, answer_question_langchain
 
 
 # Page configuration
@@ -217,40 +217,8 @@ def get_bot_response(user_question):
     Calls the ask_question function from groq_llm.py to get an LLM answer.
     If PDFs are uploaded, include their combined text as context.
     """
-    pdf_context = get_combined_pdf_context()
-    
-    if pdf_context:
-        prompt = f"{user_question}\n\nContext from uploaded documents:\n{pdf_context}"
-    else:
-        prompt = user_question
-    
-    return ask_question(prompt)
-
-# Sidebar for uploaded files overview
-with st.sidebar:
-    st.header("📚 Uploaded Documents")
-    
-    if st.session_state.uploaded_pdfs:
-        st.markdown(f"**{len(st.session_state.uploaded_pdfs)} file(s) uploaded**")
-        st.markdown("---")
-        
-        for idx, pdf in enumerate(st.session_state.uploaded_pdfs):
-            col1, col2 = st.columns([4, 1])
-            with col1:
-                st.markdown(f"📄 **{pdf['filename']}**")
-                st.caption(f"{len(pdf['text'])} characters")
-            with col2:
-                if st.button("🗑️", key=f"remove_{idx}", help="Remove file"):
-                    st.session_state.uploaded_pdfs.pop(idx)
-                    st.rerun()
-        
-        st.markdown("---")
-        if st.button("🗑️ Clear All", use_container_width=True):
-            st.session_state.uploaded_pdfs = []
-            st.session_state.messages = []
-            st.rerun()
-    else:
-        st.info("No files uploaded yet")
+    res = answer_question(user_question)
+    return res.get("answer", "Geen antwoord beschikbaar.")
 
 # App header
 st.title("What's on the agenda today?")
@@ -270,15 +238,22 @@ if uploaded_file is not None:
     
     if uploaded_file.name not in existing_names:
         with st.spinner("Processing PDF..."):
-            text = extract_text_from_pdf(uploaded_file)
-            st.session_state.uploaded_pdfs.append({
-                "filename": uploaded_file.name,
-                "text": text
-            })
-        st.success(f"✅ Added {uploaded_file.name}")
-        st.rerun()
-    else:
-        st.info(f"📄 {uploaded_file.name} is already uploaded")
+            try:
+                ingest_and_store_pdf(uploaded_file.read(), uploaded_file.name)
+                st.session_state.pdf_text = ""
+                st.session_state.pdf_uploaded = True
+                st.session_state.uploaded_filename = uploaded_file.name
+                st.session_state.messages = []
+            except Exception as e:
+                st.error(f"Fout bij PDF-ingestie: {e}")
+
+# Display file badge if PDF is uploaded
+if st.session_state.pdf_uploaded:
+    st.markdown(f"""
+        <div class="file-badge">
+            📄 {st.session_state.uploaded_filename}
+        </div>
+        """, unsafe_allow_html=True)
 
 # Display welcome message or chat history
 if not st.session_state.messages:
