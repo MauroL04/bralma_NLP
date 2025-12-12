@@ -1,25 +1,25 @@
-ingest_pdf:
+rag_agent:
   description: >
     Ingest a PDF document into the vector database.
     Use the ingest_pdf_tool to process and store the document.
   expected_output: >
     Confirmation of successful PDF ingestion with number of chunks created.
-  agent: pdf_ingestion_agent
+  agent: rag_agent
 
-retrieve_context:
+quiz_agent:
   description: >
     Retrieve relevant context from the vector database for a user question.
     Use the retrieve_context_tool to find the most relevant chunks.
   expected_output: >
     Relevant context excerpts from ingested PDFs with source information.
-  agent: pdf_retrieval_agent
+  agent: quiz_agent
 
-answer_question:
+answer_agent:
   description: >
     Answer the user's question using the retrieved context.
     Use the answer_question_with_context_tool to generate an answer with Groq LLM.
     Include quiz questions if relevant.
   expected_output: >
     A comprehensive answer with optional quiz questions for learning reinforcement.
-  agent: pdf_answering_agent
+  agent: answer_agent
 
