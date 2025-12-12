@@ -214,25 +214,25 @@ def extract_text_from_ppt(ppt_file):
     except Exception as e:
         return f"Error extracting text: {str(e)}"
  
-def get_combined_pdf_context():
-    """Combine all uploaded PDF texts into one context string"""
+def get_combined_documents_context():
+    """Combine all uploaded documents (PDF and PPT) into one context string"""
     if not st.session_state.uploaded_pdfs:
         return ""
    
     combined = ""
-    for idx, pdf in enumerate(st.session_state.uploaded_pdfs):
-        combined += f"\n\n=== Document {idx+1}: {pdf['filename']} ===\n"
-        combined += pdf['text'][:3000]  # Limit each PDF to avoid token overflow
+    for idx, doc in enumerate(st.session_state.uploaded_pdfs):
+        combined += f"\n\n=== Document {idx+1}: {doc['filename']} ===\n"
+        combined += doc['text']
    
     return combined
  
 def get_bot_response(user_question):
     """
     Calls the answer_and_maybe_quiz function from groq_answer_llm.py to get an LLM answer.
-    If PDFs are uploaded, include their combined text as context.
+    If documents (PDF or PPT) are uploaded, include their combined text as context.
     """
-    pdf_context = get_combined_pdf_context()
-    return answer_and_maybe_quiz(user_question, pdf_context)
+    document_context = get_combined_documents_context()
+    return answer_and_maybe_quiz(user_question, document_context)
  
 # Sidebar for uploaded files overview
 with st.sidebar:
