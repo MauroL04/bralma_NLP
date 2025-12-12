@@ -5,6 +5,11 @@ from pathlib import Path
 import PyPDF2
 from datetime import datetime
 from groq_answer_llm import answer_and_maybe_quiz
+import os
+import warnings
+
+warnings.filterwarnings("ignore", category=SyntaxWarning, module="pysbd")
+warnings.filterwarnings("ignore")
  
  
 # Page configuration
@@ -219,6 +224,26 @@ def get_bot_response(user_question):
     """
     pdf_context = get_combined_pdf_context()
     return answer_and_maybe_quiz(user_question, pdf_context)
+
+def run_code_analysis_crew():
+    """
+    Voert de CrewAI PDF processing uit op het project
+    """
+    try:
+        # Importeer hier om circular imports te voorkomen
+        from ai_development.crew import CodeAnalysisCrew
+        
+        project_path = str(Path(__file__).parent)
+        
+        st.info("🚀 Starten met code analyse...")
+        
+        crew = CodeAnalysisCrew()
+        result = crew.crew().kickoff(inputs={'project_path': project_path})
+        
+        return result
+    except Exception as e:
+        st.error(f"❌ Fout bij crew uitvoering: {str(e)}")
+        return None
  
 # Sidebar for uploaded files overview
 with st.sidebar:
@@ -245,6 +270,18 @@ with st.sidebar:
             st.rerun()
     else:
         st.info("No files uploaded yet")
+    
+    # Project Analysis Section
+    st.markdown("---")
+    st.header("🔬 Project Analysis")
+    
+    if st.button("📊 Analyze Codebase", use_container_width=True, help="Voer CrewAI code analyse uit"):
+        with st.spinner("⏳ Code analyse wordt uitgevoerd... Dit kan enkele minuten duren"):
+            result = run_code_analysis_crew()
+            if result:
+                st.success("✅ Analyse voltooid!")
+                with st.expander("📄 Analyse Resultaat"):
+                    st.write(result)
  
 # App header
 st.title("What's on the agenda today?")
