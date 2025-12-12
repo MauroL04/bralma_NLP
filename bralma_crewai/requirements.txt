@@ -1,0 +1,4 @@
+crewai==1.6.1 
+# langchain
+# langchain-text-splitters
+# litellm>=1.0.0

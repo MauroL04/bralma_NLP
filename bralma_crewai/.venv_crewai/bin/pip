@@ -1,0 +1,10 @@
+#!/bin/sh
+'''exec' "/Users/alex/Documents/Semester 7/Machine Learning/Projects/Project 3 NLP/final_project/bralma_NLP/bralma_crewai/.venv_crewai/bin/python3.11" "$0" "$@"
+' '''
+# -*- coding: utf-8 -*-
+import re
+import sys
+from pip._internal.cli.main import main
+if __name__ == '__main__':
+    sys.argv[0] = re.sub(r'(-script\.pyw|\.exe)?$', '', sys.argv[0])
+    sys.exit(main())
