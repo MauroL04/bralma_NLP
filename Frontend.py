@@ -183,11 +183,16 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
+
 # Initialize session state
 if 'messages' not in st.session_state:
     st.session_state.messages = []
 if 'uploaded_pdfs' not in st.session_state:
     st.session_state.uploaded_pdfs = []  # List of dicts: [{"filename": "...", "text": "..."}]
+if 'pdf_uploaded' not in st.session_state:
+    st.session_state.pdf_uploaded = False
+if 'uploaded_filename' not in st.session_state:
+    st.session_state.uploaded_filename = ""
 
 def extract_text_from_pdf(pdf_file):
     """Extract text from uploaded PDF file"""
@@ -239,7 +244,7 @@ if uploaded_file is not None:
     if uploaded_file.name not in existing_names:
         with st.spinner("Processing PDF..."):
             try:
-                ingest_and_store_pdf(uploaded_file.read(), uploaded_file.name)
+                ingest_and_store_pdf_langchain(uploaded_file.read(), uploaded_file.name)
                 st.session_state.pdf_text = ""
                 st.session_state.pdf_uploaded = True
                 st.session_state.uploaded_filename = uploaded_file.name
