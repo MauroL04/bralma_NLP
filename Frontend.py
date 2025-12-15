@@ -28,6 +28,32 @@ st.markdown("""
     [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] {
         color: #e0e0e0;
     }
+    
+    /* Force sidebar to always be visible and expanded */
+    section[data-testid="stSidebar"] {
+        display: block !important;
+        transform: none !important;
+        min-width: 21rem !important;
+        max-width: 21rem !important;
+        width: 21rem !important;
+        margin-left: 0 !important;
+    }
+    
+    /* Hide the collapse/expand button completely */
+    [data-testid="collapsedControl"] {
+        display: none !important;
+    }
+    
+    button[kind="header"] {
+        display: none !important;
+    }
+    
+    /* Override any aria-expanded state */
+    section[data-testid="stSidebar"][aria-expanded="true"],
+    section[data-testid="stSidebar"][aria-expanded="false"] {
+        display: block !important;
+        transform: translateX(0) !important;
+    }
    
     /* Main container styling */
     .main {
@@ -189,6 +215,10 @@ if 'messages' not in st.session_state:
     st.session_state.messages = []
 if 'uploaded_pdfs' not in st.session_state:
     st.session_state.uploaded_pdfs = []  # List of dicts: [{"filename": "...", "text": "..."}]
+if 'chat_sessions' not in st.session_state:
+    st.session_state.chat_sessions = []  # List of saved chat sessions
+if 'current_session_name' not in st.session_state:
+    st.session_state.current_session_name = None
  
 def extract_text_from_pdf(pdf_file):
     """Extract text from uploaded PDF file"""
@@ -234,31 +264,73 @@ def get_bot_response(user_question):
     document_context = get_combined_documents_context()
     return answer_and_maybe_quiz(user_question, document_context)
  
-# Sidebar for uploaded files overview
+# Sidebar for uploaded files and chat history
 with st.sidebar:
-    st.header("📚 Uploaded Documents")
-   
-    if st.session_state.uploaded_pdfs:
-        st.markdown(f"**{len(st.session_state.uploaded_pdfs)} file(s) uploaded**")
-        st.markdown("---")
-       
-        for idx, pdf in enumerate(st.session_state.uploaded_pdfs):
-            col1, col2 = st.columns([4, 1])
-            with col1:
-                st.markdown(f"📄 **{pdf['filename']}**")
-                st.caption(f"{len(pdf['text'])} characters")
-            with col2:
-                if st.button("🗑️", key=f"remove_{idx}", help="Remove file"):
-                    st.session_state.uploaded_pdfs.pop(idx)
+    st.title("📋 Menu")
+    st.markdown("---")
+    
+    # Uploaded Documents Section
+    with st.expander("📚 Uploaded Documents", expanded=True):
+        if st.session_state.uploaded_pdfs:
+            st.markdown(f"**{len(st.session_state.uploaded_pdfs)} file(s) loaded**")
+            st.markdown("")
+           
+            for idx, pdf in enumerate(st.session_state.uploaded_pdfs):
+                col1, col2 = st.columns([4, 1])
+                with col1:
+                    st.markdown(f"📄 **{pdf['filename']}**")
+                    st.caption(f"{len(pdf['text'])} chars")
+                with col2:
+                    if st.button("🗑️", key=f"remove_{idx}", help="Remove file"):
+                        st.session_state.uploaded_pdfs.pop(idx)
+                        st.rerun()
+           
+            if st.button("🗑️ Clear All Files", use_container_width=True, key="clear_files"):
+                st.session_state.uploaded_pdfs = []
+                st.rerun()
+        else:
+            st.info("No files uploaded")
+    
+    st.markdown("")
+    
+    # Chat History Section
+    with st.expander("💬 Chat History", expanded=True):
+        col1, col2 = st.columns([3, 2])
+        with col1:
+            if st.button("💾 Save Chat", use_container_width=True, disabled=len(st.session_state.messages) == 0):
+                if st.session_state.messages:
+                    session_name = f"Chat {len(st.session_state.chat_sessions) + 1} - {datetime.now().strftime('%m/%d %H:%M')}"
+                    st.session_state.chat_sessions.append({
+                        "name": session_name,
+                        "messages": st.session_state.messages.copy(),
+                        "timestamp": datetime.now()
+                    })
+                    st.session_state.current_session_name = session_name
                     st.rerun()
-       
-        st.markdown("---")
-        if st.button("🗑️ Clear All", use_container_width=True):
-            st.session_state.uploaded_pdfs = []
-            st.session_state.messages = []
-            st.rerun()
-    else:
-        st.info("No files uploaded yet")
+        with col2:
+            if st.button("🗑️ New Chat", use_container_width=True):
+                st.session_state.messages = []
+                st.session_state.current_session_name = None
+                st.rerun()
+        
+        st.markdown("")
+        
+        if st.session_state.chat_sessions:
+            st.markdown(f"**{len(st.session_state.chat_sessions)} saved chat(s)**")
+            for idx, session in enumerate(reversed(st.session_state.chat_sessions)):
+                actual_idx = len(st.session_state.chat_sessions) - 1 - idx
+                col1, col2 = st.columns([4, 1])
+                with col1:
+                    if st.button(f"💬 {session['name']}", key=f"load_session_{actual_idx}", use_container_width=True):
+                        st.session_state.messages = session['messages'].copy()
+                        st.session_state.current_session_name = session['name']
+                        st.rerun()
+                with col2:
+                    if st.button("🗑️", key=f"delete_session_{actual_idx}", help="Delete chat"):
+                        st.session_state.chat_sessions.pop(actual_idx)
+                        st.rerun()
+        else:
+            st.info("No saved chats")
  
 # App header
 st.title("What's on the agenda today?")
