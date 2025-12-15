@@ -112,7 +112,7 @@ st.markdown("""
     .stChatInput {
         position: fixed;
         bottom: 2rem;
-        left: 50%;
+        left: calc(50% + 10.5rem);
         transform: translateX(-50%);
         width: 70%;
         max-width: 800px;
@@ -141,6 +141,16 @@ st.markdown("""
    
     .stChatInput input::placeholder {
         color: #999 !important;
+    }
+    
+    /* Style the submit button to match input background */
+    .stChatInput button {
+        background-color: #f5f5f5 !important;
+        color: #333 !important;
+    }
+    
+    .stChatInput button:hover {
+        background-color: #e0e0e0 !important;
     }
    
     /* File upload overlay */
@@ -299,16 +309,7 @@ with st.sidebar:
         with col1:
             if st.button("💾 Save Chat", use_container_width=True, disabled=len(st.session_state.messages) == 0):
                 if st.session_state.messages:
-                    # Use the first user message as the session name
-                    first_message = next((msg for msg in st.session_state.messages if msg["role"] == "user"), None)
-                    if first_message:
-                        # Truncate if too long (max 50 characters)
-                        session_name = first_message["content"][:50]
-                        if len(first_message["content"]) > 50:
-                            session_name += "..."
-                    else:
-                        session_name = f"Chat {len(st.session_state.chat_sessions) + 1}"
-                    
+                    session_name = f"Chat {len(st.session_state.chat_sessions) + 1} - {datetime.now().strftime('%m/%d %H:%M')}"
                     st.session_state.chat_sessions.append({
                         "name": session_name,
                         "messages": st.session_state.messages.copy(),
