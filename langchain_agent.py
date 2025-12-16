@@ -3,9 +3,9 @@ from pathlib import Path
 from typing import List, Dict
 from datetime import datetime
 
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain.vectorstores import Chroma
-from langchain.document_loaders import PyMuPDFLoader
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_community.vectorstores import Chroma
+from langchain_community.document_loaders import PyMuPDFLoader, UnstructuredPowerPointLoader
 from langchain_community.embeddings import SentenceTransformerEmbeddings
 
 
@@ -20,12 +20,22 @@ splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
 
 
 def ingest_pdf(file_bytes: bytes, filename: str) -> Dict:
-    """Ingest a PDF using LangChain loader and splitter, store chunks in Chroma."""
-    path = Path(PDF_STORE) / f"{filename}__{int(datetime.utcnow().timestamp())}.pdf"
+    """Ingest a document (PDF or PPTX) using LangChain loader and splitter, store chunks in Chroma."""
+    # Detect file type and save with correct extension
+    file_ext = Path(filename).suffix.lower()
+    if file_ext not in ['.pdf', '.pptx']:
+        file_ext = '.pdf'  # default to PDF
+    
+    path = Path(PDF_STORE) / f"{filename}__{int(datetime.utcnow().timestamp())}{file_ext}"
     with open(path, "wb") as f:
         f.write(file_bytes)
 
-    loader = PyMuPDFLoader(str(path))
+    # Use appropriate loader based on file type
+    if file_ext == '.pptx':
+        loader = UnstructuredPowerPointLoader(str(path))
+    else:
+        loader = PyMuPDFLoader(str(path))
+    
     docs = loader.load()
     docs = splitter.split_documents(docs) 
 

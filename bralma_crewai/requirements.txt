@@ -1,4 +1,16 @@
-crewai==1.6.1 
-# langchain
-# langchain-text-splitters
-# litellm>=1.0.0
+# CrewAI venv dependencies (.venv_crewai)\n# Gebruikt python-dotenv>=1.1.1 (vereist door CrewAI)\ncrewai[tools]==1.6.1
+python-dotenv>=1.1.1
+groq==0.37.1
+litellm>=1.0.0
+
+# LangChain voor RAG - GEPINDE VERSIES!
+langchain==0.3.0
+langchain-community==0.3.0
+langchain-text-splitters==0.3.0
+langchain-core==0.3.0
+sentence-transformers>=2.2.2
+chromadb>=0.3.29
+pymupdf>=1.22.0
+PyPDF2>=3.0.0
+python-pptx>=0.6.21
+unstructured>=0.10.0

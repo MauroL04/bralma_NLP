@@ -2,7 +2,7 @@
 name = "bralma_crewai"
 version = "0.1.0"
 description = "Code Analysis Crew using CrewAI with Groq LLM"
-authors = [{ name = "Alex", email = "alex@example.com" }]
+authors = [{ name = "Alex Hendrickx" }, { name = "Brent Paessens" }, {name = "Mauro Leonardo" }]
 requires-python = ">=3.10,<3.14"
 dependencies = [
     "crewai[tools]==1.6.1",
@@ -11,10 +11,10 @@ dependencies = [
 ]
 
 [project.scripts]
-ai_development = "ai_development.main:run"
-run_crew = "ai_development.main:run"
-train = "ai_development.main:train"
-replay = "ai_development.main:replay"
+ai_development = "bralma_crewai.main:run"
+run_crew = "bralma_crewai.main:run"
+train = "bralma_crewai.main:train"
+replay = "bralma_crewai.main:replay"
 
 [build-system]
 requires = ["hatchling"]

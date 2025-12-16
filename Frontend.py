@@ -1,12 +1,16 @@
-import subprocess
-import sys
+import os
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
 import streamlit as st
 from pathlib import Path
 import PyPDF2
+from pptx import Presentation
 from datetime import datetime
-from groq_answer_llm import answer_and_maybe_quiz
-import os
 import warnings
+
+# Import direct LLM modules + RAG
+import groq_answer_llm
+import langchain_agent
 
 warnings.filterwarnings("ignore", category=SyntaxWarning, module="pysbd")
 warnings.filterwarnings("ignore")
@@ -14,7 +18,7 @@ warnings.filterwarnings("ignore")
  
 # Page configuration
 st.set_page_config(
-    page_title="PDF Chat Assistant",
+    page_title="Document Chat Assistant",
     page_icon="💬",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -191,8 +195,8 @@ st.markdown("""
 # Initialize session state
 if 'messages' not in st.session_state:
     st.session_state.messages = []
-if 'uploaded_pdfs' not in st.session_state:
-    st.session_state.uploaded_pdfs = []  # List of dicts: [{"filename": "...", "text": "..."}]
+if 'uploaded_documents' not in st.session_state:
+    st.session_state.uploaded_documents = []  # List of dicts: [{"filename": "...", "text": "...", "type": "pdf/pptx"}]
  
 def extract_text_from_pdf(pdf_file):
     """Extract text from uploaded PDF file"""
@@ -204,119 +208,151 @@ def extract_text_from_pdf(pdf_file):
         return text
     except Exception as e:
         return f"Error extracting text: {str(e)}"
+
+def extract_text_from_ppt(ppt_file):
+    """Extract text from uploaded PowerPoint file"""
+    try:
+        prs = Presentation(ppt_file)
+        text = ""
+        for slide in prs.slides:
+            for shape in slide.shapes:
+                if hasattr(shape, "text"):
+                    text += shape.text + "\n"
+        return text
+    except Exception as e:
+        return f"Error extracting text: {str(e)}"
  
-def get_combined_pdf_context():
-    """Combine all uploaded PDF texts into one context string"""
-    if not st.session_state.uploaded_pdfs:
+def get_combined_documents_context():
+    """Combine all uploaded documents (PDF and PPTX) into one context string"""
+    if not st.session_state.uploaded_documents:
         return ""
    
     combined = ""
-    for idx, pdf in enumerate(st.session_state.uploaded_pdfs):
-        combined += f"\n\n=== Document {idx+1}: {pdf['filename']} ===\n"
-        combined += pdf['text'][:3000]  # Limit each PDF to avoid token overflow
+    for idx, doc in enumerate(st.session_state.uploaded_documents):
+        doc_type = doc.get('type', 'document').upper()
+        combined += f"\n\n=== {doc_type} {idx+1}: {doc['filename']} ===\n"
+        combined += doc['text'][:3000]  # Limit each document to avoid token overflow
    
     return combined
  
 def get_bot_response(user_question):
     """
-    Calls the answer_and_maybe_quiz function from groq_answer_llm.py to get an LLM answer.
-    If PDFs are uploaded, include their combined text as context.
+    Team's aanpak: Direct answer_and_maybe_quiz call.
+    Enhanced with RAG semantic search for BETTER answers.
+    
+    Workflow:
+        1. Get document context (PDF + PPTX uploaded files)
+        2. Get RAG context (semantic search from ChromaDB)
+        3. Combine both contexts
+        4. Call answer_and_maybe_quiz for final answer + quiz
     """
-    pdf_context = get_combined_pdf_context()
-    return answer_and_maybe_quiz(user_question, pdf_context)
-
-def run_code_analysis_crew():
-    """
-    Voert de CrewAI PDF processing uit op het project
-    """
+    # Step 1: Get uploaded documents context
+    document_context = get_combined_documents_context()
+    
+    # Step 2: Get RAG context (semantic search - better relevance)
     try:
-        # Importeer hier om circular imports te voorkomen
-        from ai_development.crew import CodeAnalysisCrew
-        
-        project_path = str(Path(__file__).parent)
-        
-        st.info("🚀 Starten met code analyse...")
-        
-        crew = CodeAnalysisCrew()
-        result = crew.crew().kickoff(inputs={'project_path': project_path})
-        
-        return result
-    except Exception as e:
-        st.error(f"❌ Fout bij crew uitvoering: {str(e)}")
-        return None
+        rag_context = langchain_agent.get_context_for_question(user_question, k=4)
+    except:
+        rag_context = ""  # Fallback if no documents ingested in ChromaDB
+    
+    # Step 3: Combine contexts (RAG is usually better, but include uploaded docs too)
+    combined_context = rag_context if rag_context else document_context
+    
+    # Step 4: Direct LLM call (team's approach)
+    return groq_answer_llm.answer_and_maybe_quiz(user_question, combined_context)
  
 # Sidebar for uploaded files overview
 with st.sidebar:
     st.header("📚 Uploaded Documents")
    
-    if st.session_state.uploaded_pdfs:
-        st.markdown(f"**{len(st.session_state.uploaded_pdfs)} file(s) uploaded**")
+    if st.session_state.uploaded_documents:
+        st.markdown(f"**{len(st.session_state.uploaded_documents)} file(s) uploaded**")
         st.markdown("---")
        
-        for idx, pdf in enumerate(st.session_state.uploaded_pdfs):
+        for idx, doc in enumerate(st.session_state.uploaded_documents):
             col1, col2 = st.columns([4, 1])
             with col1:
-                st.markdown(f"📄 **{pdf['filename']}**")
-                st.caption(f"{len(pdf['text'])} characters")
+                icon = "📄" if doc.get('type') == 'pdf' else "📊"
+                st.markdown(f"{icon} **{doc['filename']}**")
+                st.caption(f"{len(doc['text'])} characters")
             with col2:
                 if st.button("🗑️", key=f"remove_{idx}", help="Remove file"):
-                    st.session_state.uploaded_pdfs.pop(idx)
+                    st.session_state.uploaded_documents.pop(idx)
                     st.rerun()
        
         st.markdown("---")
         if st.button("🗑️ Clear All", use_container_width=True):
-            st.session_state.uploaded_pdfs = []
+            st.session_state.uploaded_documents = []
             st.session_state.messages = []
             st.rerun()
     else:
         st.info("No files uploaded yet")
     
-    # Project Analysis Section
-    st.markdown("---")
-    st.header("🔬 Project Analysis")
-    
-    if st.button("📊 Analyze Codebase", use_container_width=True, help="Voer CrewAI code analyse uit"):
-        with st.spinner("⏳ Code analyse wordt uitgevoerd... Dit kan enkele minuten duren"):
-            result = run_code_analysis_crew()
-            if result:
-                st.success("✅ Analyse voltooid!")
-                with st.expander("📄 Analyse Resultaat"):
-                    st.write(result)
+    # Project Analysis Section (Commented out - not yet implemented)
+    # st.markdown("---")
+    # st.header("🔬 Project Analysis")
+    # if st.button("📊 Analyze Codebase", use_container_width=True):
+    #     st.info("Code analysis feature coming soon!")
  
 # App header
 st.title("What's on the agenda today?")
  
-# File upload section (same drag & drop as before)
+# File upload section - PDF and PPTX support
 uploaded_file = st.file_uploader(
-    "Drop your PDF file here",
-    type=['pdf'],
-    help="Drag and drop a PDF file to upload",
+    "Drop your PDF or PPTX file here",
+    type=['pdf', 'pptx'],
+    help="Drag and drop a PDF or PowerPoint file to upload",
     label_visibility="collapsed"
 )
  
-# Process uploaded file
+# Process uploaded file (PDF or PPTX)
 if uploaded_file is not None:
     # Check if file already exists
-    existing_names = [pdf['filename'] for pdf in st.session_state.uploaded_pdfs]
+    existing_names = [doc['filename'] for doc in st.session_state.uploaded_documents]
    
     if uploaded_file.name not in existing_names:
-        with st.spinner("Processing PDF..."):
-            text = extract_text_from_pdf(uploaded_file)
-            st.session_state.uploaded_pdfs.append({
-                "filename": uploaded_file.name,
-                "text": text
-            })
-        st.success(f"✅ Added {uploaded_file.name}")
-        st.rerun()
+        # Detect file type and extract text
+        file_extension = uploaded_file.name.split('.')[-1].lower()
+        
+        with st.spinner(f"Processing {file_extension.upper()}..."):
+            if file_extension == 'pdf':
+                text = extract_text_from_pdf(uploaded_file)
+                doc_type = 'pdf'
+            elif file_extension == 'pptx':
+                text = extract_text_from_ppt(uploaded_file)
+                doc_type = 'pptx'
+            else:
+                st.error("Unsupported file type")
+                text = ""
+                doc_type = 'unknown'
+            
+            if text and not text.startswith("Error"):
+                # Add to session state
+                st.session_state.uploaded_documents.append({
+                    "filename": uploaded_file.name,
+                    "text": text,
+                    "type": doc_type
+                })
+                
+                # Ingest into ChromaDB for RAG (better semantic search)
+                try:
+                    langchain_agent.ingest_pdf(text.encode('utf-8'), uploaded_file.name)
+                except:
+                    pass  # Fallback gracefully if ingestion fails
+                
+                st.success(f"✅ Added {uploaded_file.name}")
+                st.rerun()
+            else:
+                st.error(f"Failed to extract text from {uploaded_file.name}")
     else:
         st.info(f"📄 {uploaded_file.name} is already uploaded")
  
 # Display welcome message or chat history
 if not st.session_state.messages:
-    if not st.session_state.uploaded_pdfs:
-        st.markdown('<div class="subtitle">Drop a PDF file to get started, or ask me anything</div>', unsafe_allow_html=True)
+    if not st.session_state.uploaded_documents:
+        st.markdown('<div class="subtitle">Drop a PDF or PPTX file to get started, or ask me anything</div>', unsafe_allow_html=True)
     else:
-        st.markdown(f'<div class="subtitle">{len(st.session_state.uploaded_pdfs)} PDF(s) loaded! Ask me anything about the documents.</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="subtitle">{len(st.session_state.uploaded_documents)} document(s) loaded! Ask me anything about them.</div>', unsafe_allow_html=True)
 else:
     # Display chat history
     chat_container = st.container()

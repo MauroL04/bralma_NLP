@@ -1,85 +1,75 @@
+"""  
+Bralma CrewAI - Simplified 2-agent orchestration.
+RAG Agent: Retrieves context from vector DB.
+Answer Agent: Generates answers with quizzes.
+"""
+
 from crewai import Agent, Crew, Process, Task
 from crewai.project import CrewBase, agent, crew, task
-from crewai.agents.agent_builder.base_agent import BaseAgent
-from typing import List
 from dotenv import load_dotenv
 from .tools.pdf_tools import (
-    ingest_pdf_tool, 
     retrieve_context_tool,
-    answer_question_with_context_tool
+    answer_with_rag_tool
 )
 
-# Load environment variables
 load_dotenv()
 
-# If you want to run a snippet of code before or after the crew starts,
-# you can use the @before_kickoff and @after_kickoff decorators
-# https://docs.crewai.com/concepts/crews#example-crew-class-with-decorators
 
 @CrewBase
 class PDFProcessingCrew():
-    """PDF Processing Crew - Multi-agent system for PDF ingestion and question-answering"""
-
-    agents: List[BaseAgent]
-    tasks: List[Task]
-
-    # Learn more about YAML configuration files here:
-    # Agents: https://docs.crewai.com/concepts/agents#yaml-configuration-recommended
-    # Tasks: https://docs.crewai.com/concepts/tasks#yaml-configuration-recommended
-    
-    @agent
-    def pdf_ingestion_agent(self) -> Agent:
-        return Agent(
-            config=self.agents_config['pdf_ingestion_agent'],
-            tools=[ingest_pdf_tool],
-            verbose=True
-        )
+    """
+    Simplified document RAG system (PDF + PPTX) with 2 collaborating agents.
+    RAG Agent → Answer Agent workflow.
+    """
 
     @agent
-    def pdf_retrieval_agent(self) -> Agent:
+    def rag_agent(self) -> Agent:
+        """Handles context retrieval from vector database"""
         return Agent(
-            config=self.agents_config['pdf_retrieval_agent'],
+            config=self.agents_config['rag_agent'],
             tools=[retrieve_context_tool],
-            verbose=True
+            verbose=True,
+            allow_delegation=False
         )
 
     @agent
-    def pdf_answering_agent(self) -> Agent:
+    def answer_agent(self) -> Agent:
+        """Generates answers with quizzes using context"""
         return Agent(
-            config=self.agents_config['pdf_answering_agent'],
-            tools=[answer_question_with_context_tool],
-            verbose=True
-        )
-
-    # Tasks - PDF Processing workflow
-    @task
-    def ingest_pdf(self) -> Task:
-        return Task(
-            config=self.tasks_config['ingest_pdf']
+            config=self.agents_config['answer_agent'],
+            tools=[answer_with_rag_tool],
+            verbose=True,
+            allow_delegation=False
         )
 
     @task
-    def retrieve_context(self) -> Task:
+    def retrieve_task(self) -> Task:
+        """Retrieve relevant context for question"""
         return Task(
-            config=self.tasks_config['retrieve_context'],
-            depends_on=[self.ingest_pdf()]
+            config=self.tasks_config['retrieve_task'],
+            async_execution=False
         )
 
     @task
-    def answer_question(self) -> Task:
+    def answer_task(self) -> Task:
+        """Generate answer with quiz"""
         return Task(
-            config=self.tasks_config['answer_question'],
-            depends_on=[self.retrieve_context()]
+            config=self.tasks_config['answer_task'],
+            async_execution=False
         )
 
     @crew
     def crew(self) -> Crew:
-        """Creates the PDFProcessingCrew"""
+        """
+        Sequential workflow:
+        1. RAG Agent retrieves context
+        2. Answer Agent generates answer + quiz
+        """
         return Crew(
             agents=self.agents,
             tasks=self.tasks,
             process=Process.sequential,
             verbose=True,
-            memory=False  # Disabled to avoid OpenAI embedding requirement
+            memory=True
         )
 

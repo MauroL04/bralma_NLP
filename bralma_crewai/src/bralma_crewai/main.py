@@ -1,62 +1,48 @@
 #!/usr/bin/env python
-import sys
+"""
+CrewAI Orchestration Entry Point.
+Demonstrates full multi-agent workflow for document RAG system (PDF + PPTX).
+"""
+
 import warnings
 from pathlib import Path
-from datetime import datetime
 
-from ai_development.crew import PDFProcessingCrew
+from bralma_crewai.crew import PDFProcessingCrew
 
 warnings.filterwarnings("ignore", category=SyntaxWarning, module="pysbd")
 
-# Project path configuration
-PROJECT_PATH = str(Path(__file__).parent.parent.parent.parent.parent)
 
-def run():
+def run_pdf_rag_workflow(question: str, pdf_context: str = ""):
     """
-    Run the PDF processing crew.
-    Handles PDF ingestion, context retrieval, and question-answering.
+    Run multi-agent workflow: RAG retrieval → Answer + Quiz
+    
+    Args:
+        question: User's question
+        pdf_context: Optional document context (if already extracted)
+        
+    Returns:
+        Answer with quiz (orchestrated by CrewAI agents)
     """
-    inputs = {
-        'project_path': PROJECT_PATH
-    }
-
     try:
-        print(f"\n🚀 Starting PDF Processing Crew...")
-        print(f"📁 Project at: {PROJECT_PATH}")
-        print(f"⏱️  Started at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+        print(f"\n🚀 CrewAI Multi-Agent Workflow Starting...")
+        print(f"❓ Question: {question}\n")
         
-        result = PDFProcessingCrew().crew().kickoff(inputs=inputs)
+        crew = PDFProcessingCrew()
         
-        print(f"\n✅ PDF Processing Complete!")
-        print(f"⏱️  Finished at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+        result = crew.crew().kickoff(inputs={
+            'question': question,
+            'context': pdf_context
+        })
         
+        print(f"\n✅ Workflow Complete!\n")
         return result
     except Exception as e:
-        raise Exception(f"An error occurred while running the crew: {e}")
-
-
-def train():
-    """
-    Train the crew for a given number of iterations.
-    """
-    inputs = {
-        'project_path': PROJECT_PATH
-    }
-    try:
-        PDFProcessingCrew().crew().train(n_iterations=int(sys.argv[1]), filename=sys.argv[2], inputs=inputs)
-    except Exception as e:
-        raise Exception(f"An error occurred while training the crew: {e}")
-
-
-def replay():
-    """
-    Replay the crew execution from a specific task.
-    """
-    try:
-        PDFProcessingCrew().crew().replay(task_id=sys.argv[1])
-    except Exception as e:
-        raise Exception(f"An error occurred while replaying the crew: {e}")
+        print(f"❌ Error: {e}")
+        raise Exception(f"CrewAI workflow error: {e}")
 
 
 if __name__ == "__main__":
-    run()
+    # Demo workflow
+    question = "What are the main topics in this document?"
+    result = run_pdf_rag_workflow(question)
+    print(result)
