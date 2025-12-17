@@ -27,29 +27,43 @@ def ingest_pdf(file_bytes: bytes, filename: str) -> Dict:
         file_ext = '.pdf'  # default to PDF
     
     path = Path(PDF_STORE) / f"{filename}__{int(datetime.utcnow().timestamp())}{file_ext}"
-    with open(path, "wb") as f:
-        f.write(file_bytes)
+    path.parent.mkdir(parents=True, exist_ok=True)
 
-    # Use appropriate loader based on file type
-    if file_ext == '.pptx':
-        loader = UnstructuredPowerPointLoader(str(path))
-    else:
-        loader = PyMuPDFLoader(str(path))
-    
-    docs = loader.load()
-    docs = splitter.split_documents(docs) 
+    try:
+        with open(path, "wb") as f:
+            f.write(file_bytes)
 
-    # attach source metadata
-    for d in docs:
-        if not d.metadata:
-            d.metadata = {}
-        d.metadata.setdefault("source", filename)
+        # Use appropriate loader based on file type
+        if file_ext == '.pptx':
+            loader = UnstructuredPowerPointLoader(str(path))
+        else:
+            loader = PyMuPDFLoader(str(path))
+        
+        docs = loader.load()
+        docs = splitter.split_documents(docs)
 
-    os.makedirs(PERSIST_DIR, exist_ok=True)
-    db = Chroma.from_documents(documents=docs, embedding=embeddings, persist_directory=PERSIST_DIR)
-    db.persist()
+        # attach source metadata (force filename only)
+        for d in docs:
+            if not d.metadata:
+                d.metadata = {}
+            d.metadata["source"] = filename
 
-    return {"filename": filename, "chunks_ingested": len(docs), "persist_directory": PERSIST_DIR}
+        os.makedirs(PERSIST_DIR, exist_ok=True)
+        if Path(PERSIST_DIR).exists() and any(Path(PERSIST_DIR).iterdir()):
+            db = Chroma(persist_directory=PERSIST_DIR, embedding_function=embeddings)
+            db.add_documents(docs)
+        else:
+            db = Chroma.from_documents(documents=docs, embedding=embeddings, persist_directory=PERSIST_DIR)
+        db.persist()
+
+        return {"filename": filename, "chunks_ingested": len(docs), "persist_directory": PERSIST_DIR}
+    finally:
+        # Remove temporary copy to avoid accumulation in pdf_store
+        if path.exists():
+            try:
+                path.unlink()
+            except OSError:
+                pass
 
 def query(question: str, k: int = 4) -> List[Dict]:
     try:
@@ -64,6 +78,28 @@ def query(question: str, k: int = 4) -> List[Dict]:
     return out
 
 
+def list_ingested_sources() -> List[Dict]:
+    """Return distinct sources and chunk counts currently persisted in ChromaDB."""
+    if not Path(PERSIST_DIR).exists() or not any(Path(PERSIST_DIR).iterdir()):
+        return []
+
+    try:
+        db = Chroma(persist_directory=PERSIST_DIR, embedding_function=embeddings)
+        data = db.get(include=["metadatas"])
+        metadatas = data.get("metadatas", []) or []
+        counts = {}
+        for meta in metadatas:
+            raw = (meta or {}).get("source", "unknown")
+            src = Path(str(raw)).name  # strip to filename
+            # remove temp suffixes like '__1234567890.ext'
+            if "__" in src:
+                src = src.split("__", 1)[0]
+            counts[src] = counts.get(src, 0) + 1
+        return [{"name": k, "chunks": v} for k, v in counts.items()]
+    except Exception:
+        return []
+
+
 def get_context_for_question(question: str, k: int = 4) -> str:
     hits = query(question, k=k)
     parts = []
@@ -73,4 +109,4 @@ def get_context_for_question(question: str, k: int = 4) -> str:
     return "\n".join(parts)
 
 
-__all__ = ["ingest_pdf", "query", "get_context_for_question"]
+__all__ = ["ingest_pdf", "query", "get_context_for_question", "list_ingested_sources"]

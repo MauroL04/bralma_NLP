@@ -2,9 +2,11 @@
 
 retrieve_task:
   description: >
-    Retrieve relevant context from the vector database for the question: {question}
+    Use the provided context to extract the most relevant snippets for the user's question.
+    Question: {question}
+    Provided context (from PDFs): {context}
     Use retrieve_context_tool with k=4 to find the most relevant chunks.
-    If context is already provided in inputs, validate and enhance it.
+    A concise summary of the most relevant context (keep it short, bullet points allowed).
   expected_output: >
     Relevant context from documents (PDFs and PowerPoints) with source information and relevance scores.
     Formatted context string ready for answer generation.
@@ -16,11 +18,16 @@ answer_task:
     Use context from retrieve_task or {context} if provided.
     Call answer_with_rag_tool with question and context.
     Automatically generate educational quiz questions when appropriate.
-  expected_output: >
+    Decide if a quiz is relevant. If so, generate 5 quiz questions based on the answer and context.
+    If not relevant, return only 'NONE'.
     Complete answer with:
     - Clear explanation based on document context (PDF/PPTX)
     - Optional quiz questions (5 questions) for learning
     - Proper markdown formatting
+    Answer the user's question using the context summary from the previous task.
+    Question: {question}
+  expected_output: >
+    Final answer grounded in retrieved context, with optional 5-question quiz or 'NONE' when not applicable.
   agent: answer_agent
   context:
     - retrieve_task

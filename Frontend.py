@@ -3,14 +3,20 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 import streamlit as st
 from pathlib import Path
-import PyPDF2
-from pptx import Presentation
+import sys
 from datetime import datetime
 import warnings
+import json
+import langchain_agent
+
+# Ensure package path is available for CrewAI module imports
+PROJECT_ROOT = Path(__file__).resolve().parent
+CREW_SRC = PROJECT_ROOT / "bralma_crewai" / "src"
+if str(CREW_SRC) not in sys.path:
+    sys.path.insert(0, str(CREW_SRC))
 
 # Import direct LLM modules + RAG
-import groq_answer_llm
-import langchain_agent
+from bralma_crewai.main import run_pdf_rag_workflow
 
 warnings.filterwarnings("ignore", category=SyntaxWarning, module="pysbd")
 warnings.filterwarnings("ignore")
@@ -231,86 +237,94 @@ st.markdown("""
 # Initialize session state
 if 'messages' not in st.session_state:
     st.session_state.messages = []
-if 'uploaded_pdfs' not in st.session_state:
-    st.session_state.uploaded_pdfs = []  # List of dicts: [{"filename": "...", "text": "..."}]
 if 'chat_sessions' not in st.session_state:
     st.session_state.chat_sessions = []  # List of saved chat sessions
 if 'current_session_name' not in st.session_state:
     st.session_state.current_session_name = None
- 
-def extract_text_from_pdf(pdf_file):
-    """Extract text from uploaded PDF file"""
-    try:
-        pdf_reader = PyPDF2.PdfReader(pdf_file)
-        text = ""
-        for page in pdf_reader.pages:
-            text += page.extract_text()
-        return text
-    except Exception as e:
-        return f"Error extracting text: {str(e)}"
+if 'uploaded_files' not in st.session_state:
+    st.session_state.uploaded_files = []  # [{"name": str, "chunks": int, "sig": str}]
+if 'processed_upload_sigs' not in st.session_state:
+    st.session_state.processed_upload_sigs = []
 
-def extract_text_from_ppt(ppt_file):
-    """Extract text from uploaded PowerPoint file"""
+# Hydrate uploaded files list from existing ChromaDB on startup
+if not st.session_state.uploaded_files:
+    persisted = langchain_agent.list_ingested_sources()
+    if persisted:
+        st.session_state.uploaded_files = [
+            {"name": p.get("name", "unknown"), "chunks": p.get("chunks", 0), "sig": p.get("name", "unknown")}
+            for p in persisted
+        ]
+        st.session_state.processed_upload_sigs = [p.get("name", "unknown") for p in persisted]
+
+# Simple on-disk persistence for saved chats
+CHAT_STORE = PROJECT_ROOT / "chat_sessions.json"
+
+
+def load_saved_chats():
+    if not CHAT_STORE.exists():
+        return []
     try:
-        prs = Presentation(ppt_file)
-        text = ""
-        for slide in prs.slides:
-            for shape in slide.shapes:
-                if hasattr(shape, "text"):
-                    text += shape.text + "\n"
-        return text
-    except Exception as e:
-        return f"Error extracting text: {str(e)}"
- 
-def get_combined_documents_context():
-    """Combine all uploaded documents (PDF and PPT) into one context string"""
-    if not st.session_state.uploaded_pdfs:
-        return ""
-   
-    combined = ""
-    for idx, doc in enumerate(st.session_state.uploaded_pdfs):
-        combined += f"\n\n=== Document {idx+1}: {doc['filename']} ===\n"
-        combined += doc['text']
-   
-    return combined
+        with CHAT_STORE.open("r", encoding="utf-8") as f:
+            data = json.load(f)
+            return data if isinstance(data, list) else []
+    except Exception:
+        return []
+
+
+def persist_chats():
+    try:
+        serializable = []
+        for sess in st.session_state.chat_sessions:
+            msgs = []
+            for m in sess.get("messages", []):
+                msgs.append({
+                    "role": m.get("role"),
+                    "content": m.get("content"),
+                    "timestamp": m.get("timestamp").isoformat() if hasattr(m.get("timestamp"), "isoformat") else m.get("timestamp")
+                })
+            serializable.append({
+                "name": sess.get("name"),
+                "timestamp": sess.get("timestamp").isoformat() if hasattr(sess.get("timestamp"), "isoformat") else sess.get("timestamp"),
+                "messages": msgs
+            })
+        with CHAT_STORE.open("w", encoding="utf-8") as f:
+            json.dump(serializable, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
+
+
+# Hydrate chat sessions from disk on startup
+if not st.session_state.chat_sessions:
+    saved = load_saved_chats()
+    if saved:
+        st.session_state.chat_sessions = saved
  
 def get_bot_response(user_question):
     """
-    Calls the answer_and_maybe_quiz function from groq_answer_llm.py to get an LLM answer.
-    If documents (PDF or PPT) are uploaded, include their combined text as context.
+    Calls the CrewAI workflow to get an answer (and optional quiz).
+    Context retrieval happens from ChromaDB via CrewAI tools.
     """
-    document_context = get_combined_documents_context()
-    return answer_and_maybe_quiz(user_question, document_context)
+    try:
+        result = run_pdf_rag_workflow(user_question, "")
+        return str(result)
+    except Exception as e:
+        return f"Error from CrewAI workflow: {e}"
  
 # Sidebar for uploaded files and chat history
 with st.sidebar:
     st.title("📋 Menu")
     st.markdown("---")
     
-    # Uploaded Documents Section
     with st.expander("📚 Uploaded Documents", expanded=True):
-        if st.session_state.uploaded_pdfs:
-            st.markdown(f"**{len(st.session_state.uploaded_pdfs)} file(s) loaded**")
-            st.markdown("")
-           
-            for idx, pdf in enumerate(st.session_state.uploaded_pdfs):
-                col1, col2 = st.columns([4, 1])
-                with col1:
-                    st.markdown(f"📄 **{pdf['filename']}**")
-                    st.caption(f"{len(pdf['text'])} chars")
-                with col2:
-                    if st.button("🗑️", key=f"remove_{idx}", help="Remove file"):
-                        st.session_state.uploaded_pdfs.pop(idx)
-                        st.rerun()
-           
-            if st.button("🗑️ Clear All Files", use_container_width=True, key="clear_files"):
-                st.session_state.uploaded_pdfs = []
-                st.rerun()
+        if st.session_state.uploaded_files:
+            st.markdown(f"**{len(st.session_state.uploaded_files)} file(s) ingested**")
+            for i, f in enumerate(st.session_state.uploaded_files, 1):
+                st.markdown(f"{i}. **{f['name']}** — {f.get('chunks', 0)} chunks")
         else:
-            st.info("No files uploaded")
-    
+            st.info("No files ingested yet")
+
     st.markdown("")
-    
+
     # Chat History Section
     with st.expander("💬 Chat History", expanded=True):
         col1, col2 = st.columns([3, 2])
@@ -324,11 +338,13 @@ with st.sidebar:
                         "timestamp": datetime.now()
                     })
                     st.session_state.current_session_name = session_name
+                    persist_chats()
                     st.rerun()
         with col2:
             if st.button("🗑️ New Chat", use_container_width=True):
                 st.session_state.messages = []
                 st.session_state.current_session_name = None
+                persist_chats()
                 st.rerun()
         
         st.markdown("")
@@ -346,6 +362,7 @@ with st.sidebar:
                 with col2:
                     if st.button("🗑️", key=f"delete_session_{actual_idx}", help="Delete chat"):
                         st.session_state.chat_sessions.pop(actual_idx)
+                        persist_chats()
                         st.rerun()
         else:
             st.info("No saved chats")
@@ -363,38 +380,31 @@ uploaded_file = st.file_uploader(
  
 # Process uploaded file (PDF or PPTX)
 if uploaded_file is not None:
-    # Check if file already exists
-    existing_names = [doc['filename'] for doc in st.session_state.uploaded_documents]
-   
-    if uploaded_file.name not in existing_names:
-        with st.spinner(f"Processing {uploaded_file.type}..."):
-            # Extract text based on file type
-            if uploaded_file.type == "application/pdf":
-                text = extract_text_from_pdf(uploaded_file)
-            elif uploaded_file.type in ["application/vnd.ms-powerpoint", "application/vnd.openxmlformats-officedocument.presentationml.presentation"]:
-                text = extract_text_from_ppt(uploaded_file)
-            else:
-                text = ""
-                st.error(f"Unsupported file type: {uploaded_file.type}")
-            
-            if text and not text.startswith("Error"):
-                st.session_state.uploaded_pdfs.append({
-                    "filename": uploaded_file.name,
-                    "text": text
-                })
-                st.success(f"✅ Added {uploaded_file.name}")
-                st.rerun()
-            else:
-                st.error(f"Failed to extract text from {uploaded_file.name}")
+    file_sig = uploaded_file.name  # use filename-based signature for debouncing and persistence hydration
+    already = file_sig in st.session_state.processed_upload_sigs
+
+    if already:
+        st.info(f"✅ {uploaded_file.name} uploaded")
     else:
-        st.info(f"📄 {uploaded_file.name} is already uploaded")
+        with st.spinner(f"Ingesting {uploaded_file.type} into ChromaDB..."):
+            file_bytes = uploaded_file.read()
+            try:
+                ingest_result = langchain_agent.ingest_pdf(file_bytes, uploaded_file.name)
+                ingested = {
+                    "name": uploaded_file.name,
+                    "chunks": ingest_result.get('chunks_ingested', 0),
+                    "sig": file_sig
+                }
+                st.session_state.uploaded_files.append(ingested)
+                st.session_state.processed_upload_sigs.append(file_sig)
+                st.success(f"✅ {uploaded_file.name} uploaded")
+                st.toast(f"Uploaded {uploaded_file.name}")
+            except Exception as e:
+                st.error(f"Failed to ingest {uploaded_file.name}: {e}")
  
 # Display welcome message or chat history
 if not st.session_state.messages:
-    if not st.session_state.uploaded_pdfs:
-        st.markdown('<div class="subtitle">Drop a PDF or PowerPoint file to get started, or ask me anything</div>', unsafe_allow_html=True)
-    else:
-        st.markdown(f'<div class="subtitle">{len(st.session_state.uploaded_documents)} document(s) loaded! Ask me anything about them.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="subtitle">Drop a PDF or PowerPoint file to ingest into ChromaDB, then ask me anything.</div>', unsafe_allow_html=True)
 else:
     # Display chat history
     chat_container = st.container()
