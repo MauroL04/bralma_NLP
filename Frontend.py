@@ -36,6 +36,32 @@ st.markdown("""
     [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] {
         color: #e0e0e0;
     }
+    
+    /* Force sidebar to always be visible and expanded */
+    section[data-testid="stSidebar"] {
+        display: block !important;
+        transform: none !important;
+        min-width: 21rem !important;
+        max-width: 21rem !important;
+        width: 21rem !important;
+        margin-left: 0 !important;
+    }
+    
+    /* Hide the collapse/expand button completely */
+    [data-testid="collapsedControl"] {
+        display: none !important;
+    }
+    
+    button[kind="header"] {
+        display: none !important;
+    }
+    
+    /* Override any aria-expanded state */
+    section[data-testid="stSidebar"][aria-expanded="true"],
+    section[data-testid="stSidebar"][aria-expanded="false"] {
+        display: block !important;
+        transform: translateX(0) !important;
+    }
    
     /* Main container styling */
     .main {
@@ -94,7 +120,7 @@ st.markdown("""
     .stChatInput {
         position: fixed;
         bottom: 2rem;
-        left: 50%;
+        left: calc(50% + 10.5rem);
         transform: translateX(-50%);
         width: 70%;
         max-width: 800px;
@@ -123,6 +149,16 @@ st.markdown("""
    
     .stChatInput input::placeholder {
         color: #999 !important;
+    }
+    
+    /* Style the submit button to match input background */
+    .stChatInput button {
+        background-color: #f5f5f5 !important;
+        color: #333 !important;
+    }
+    
+    .stChatInput button:hover {
+        background-color: #e0e0e0 !important;
     }
    
     /* File upload overlay */
@@ -195,8 +231,12 @@ st.markdown("""
 # Initialize session state
 if 'messages' not in st.session_state:
     st.session_state.messages = []
-if 'uploaded_documents' not in st.session_state:
-    st.session_state.uploaded_documents = []  # List of dicts: [{"filename": "...", "text": "...", "type": "pdf/pptx"}]
+if 'uploaded_pdfs' not in st.session_state:
+    st.session_state.uploaded_pdfs = []  # List of dicts: [{"filename": "...", "text": "..."}]
+if 'chat_sessions' not in st.session_state:
+    st.session_state.chat_sessions = []  # List of saved chat sessions
+if 'current_session_name' not in st.session_state:
+    st.session_state.current_session_name = None
  
 def extract_text_from_pdf(pdf_file):
     """Extract text from uploaded PDF file"""
@@ -223,84 +263,100 @@ def extract_text_from_ppt(ppt_file):
         return f"Error extracting text: {str(e)}"
  
 def get_combined_documents_context():
-    """Combine all uploaded documents (PDF and PPTX) into one context string"""
-    if not st.session_state.uploaded_documents:
+    """Combine all uploaded documents (PDF and PPT) into one context string"""
+    if not st.session_state.uploaded_pdfs:
         return ""
    
     combined = ""
-    for idx, doc in enumerate(st.session_state.uploaded_documents):
-        doc_type = doc.get('type', 'document').upper()
-        combined += f"\n\n=== {doc_type} {idx+1}: {doc['filename']} ===\n"
-        combined += doc['text'][:3000]  # Limit each document to avoid token overflow
+    for idx, doc in enumerate(st.session_state.uploaded_pdfs):
+        combined += f"\n\n=== Document {idx+1}: {doc['filename']} ===\n"
+        combined += doc['text']
    
     return combined
  
 def get_bot_response(user_question):
     """
-    Team's aanpak: Direct answer_and_maybe_quiz call.
-    Enhanced with RAG semantic search for BETTER answers.
-    
-    Workflow:
-        1. Get document context (PDF + PPTX uploaded files)
-        2. Get RAG context (semantic search from ChromaDB)
-        3. Combine both contexts
-        4. Call answer_and_maybe_quiz for final answer + quiz
+    Calls the answer_and_maybe_quiz function from groq_answer_llm.py to get an LLM answer.
+    If documents (PDF or PPT) are uploaded, include their combined text as context.
     """
-    # Step 1: Get uploaded documents context
     document_context = get_combined_documents_context()
-    
-    # Step 2: Get RAG context (semantic search - better relevance)
-    try:
-        rag_context = langchain_agent.get_context_for_question(user_question, k=4)
-    except:
-        rag_context = ""  # Fallback if no documents ingested in ChromaDB
-    
-    # Step 3: Combine contexts (RAG is usually better, but include uploaded docs too)
-    combined_context = rag_context if rag_context else document_context
-    
-    # Step 4: Direct LLM call (team's approach)
-    return groq_answer_llm.answer_and_maybe_quiz(user_question, combined_context)
+    return answer_and_maybe_quiz(user_question, document_context)
  
-# Sidebar for uploaded files overview
+# Sidebar for uploaded files and chat history
 with st.sidebar:
-    st.header("📚 Uploaded Documents")
-   
-    if st.session_state.uploaded_documents:
-        st.markdown(f"**{len(st.session_state.uploaded_documents)} file(s) uploaded**")
-        st.markdown("---")
-       
-        for idx, doc in enumerate(st.session_state.uploaded_documents):
-            col1, col2 = st.columns([4, 1])
-            with col1:
-                icon = "📄" if doc.get('type') == 'pdf' else "📊"
-                st.markdown(f"{icon} **{doc['filename']}**")
-                st.caption(f"{len(doc['text'])} characters")
-            with col2:
-                if st.button("🗑️", key=f"remove_{idx}", help="Remove file"):
-                    st.session_state.uploaded_documents.pop(idx)
-                    st.rerun()
-       
-        st.markdown("---")
-        if st.button("🗑️ Clear All", use_container_width=True):
-            st.session_state.uploaded_documents = []
-            st.session_state.messages = []
-            st.rerun()
-    else:
-        st.info("No files uploaded yet")
+    st.title("📋 Menu")
+    st.markdown("---")
     
-    # Project Analysis Section (Commented out - not yet implemented)
-    # st.markdown("---")
-    # st.header("🔬 Project Analysis")
-    # if st.button("📊 Analyze Codebase", use_container_width=True):
-    #     st.info("Code analysis feature coming soon!")
+    # Uploaded Documents Section
+    with st.expander("📚 Uploaded Documents", expanded=True):
+        if st.session_state.uploaded_pdfs:
+            st.markdown(f"**{len(st.session_state.uploaded_pdfs)} file(s) loaded**")
+            st.markdown("")
+           
+            for idx, pdf in enumerate(st.session_state.uploaded_pdfs):
+                col1, col2 = st.columns([4, 1])
+                with col1:
+                    st.markdown(f"📄 **{pdf['filename']}**")
+                    st.caption(f"{len(pdf['text'])} chars")
+                with col2:
+                    if st.button("🗑️", key=f"remove_{idx}", help="Remove file"):
+                        st.session_state.uploaded_pdfs.pop(idx)
+                        st.rerun()
+           
+            if st.button("🗑️ Clear All Files", use_container_width=True, key="clear_files"):
+                st.session_state.uploaded_pdfs = []
+                st.rerun()
+        else:
+            st.info("No files uploaded")
+    
+    st.markdown("")
+    
+    # Chat History Section
+    with st.expander("💬 Chat History", expanded=True):
+        col1, col2 = st.columns([3, 2])
+        with col1:
+            if st.button("💾 Save Chat", use_container_width=True, disabled=len(st.session_state.messages) == 0):
+                if st.session_state.messages:
+                    session_name = f"Chat {len(st.session_state.chat_sessions) + 1} - {datetime.now().strftime('%m/%d %H:%M')}"
+                    st.session_state.chat_sessions.append({
+                        "name": session_name,
+                        "messages": st.session_state.messages.copy(),
+                        "timestamp": datetime.now()
+                    })
+                    st.session_state.current_session_name = session_name
+                    st.rerun()
+        with col2:
+            if st.button("🗑️ New Chat", use_container_width=True):
+                st.session_state.messages = []
+                st.session_state.current_session_name = None
+                st.rerun()
+        
+        st.markdown("")
+        
+        if st.session_state.chat_sessions:
+            st.markdown(f"**{len(st.session_state.chat_sessions)} saved chat(s)**")
+            for idx, session in enumerate(reversed(st.session_state.chat_sessions)):
+                actual_idx = len(st.session_state.chat_sessions) - 1 - idx
+                col1, col2 = st.columns([4, 1])
+                with col1:
+                    if st.button(f"💬 {session['name']}", key=f"load_session_{actual_idx}", use_container_width=True):
+                        st.session_state.messages = session['messages'].copy()
+                        st.session_state.current_session_name = session['name']
+                        st.rerun()
+                with col2:
+                    if st.button("🗑️", key=f"delete_session_{actual_idx}", help="Delete chat"):
+                        st.session_state.chat_sessions.pop(actual_idx)
+                        st.rerun()
+        else:
+            st.info("No saved chats")
  
 # App header
 st.title("What's on the agenda today?")
  
-# File upload section - PDF and PPTX support
+# File upload section (drag & drop for PDF and PPT)
 uploaded_file = st.file_uploader(
-    "Drop your PDF or PPTX file here",
-    type=['pdf', 'pptx'],
+    "Drop your PDF or PowerPoint file here",
+    type=['pdf', 'ppt', 'pptx'],
     help="Drag and drop a PDF or PowerPoint file to upload",
     label_visibility="collapsed"
 )
@@ -311,35 +367,21 @@ if uploaded_file is not None:
     existing_names = [doc['filename'] for doc in st.session_state.uploaded_documents]
    
     if uploaded_file.name not in existing_names:
-        # Detect file type and extract text
-        file_extension = uploaded_file.name.split('.')[-1].lower()
-        
-        with st.spinner(f"Processing {file_extension.upper()}..."):
-            if file_extension == 'pdf':
+        with st.spinner(f"Processing {uploaded_file.type}..."):
+            # Extract text based on file type
+            if uploaded_file.type == "application/pdf":
                 text = extract_text_from_pdf(uploaded_file)
-                doc_type = 'pdf'
-            elif file_extension == 'pptx':
+            elif uploaded_file.type in ["application/vnd.ms-powerpoint", "application/vnd.openxmlformats-officedocument.presentationml.presentation"]:
                 text = extract_text_from_ppt(uploaded_file)
-                doc_type = 'pptx'
             else:
-                st.error("Unsupported file type")
                 text = ""
-                doc_type = 'unknown'
+                st.error(f"Unsupported file type: {uploaded_file.type}")
             
             if text and not text.startswith("Error"):
-                # Add to session state
-                st.session_state.uploaded_documents.append({
+                st.session_state.uploaded_pdfs.append({
                     "filename": uploaded_file.name,
-                    "text": text,
-                    "type": doc_type
+                    "text": text
                 })
-                
-                # Ingest into ChromaDB for RAG (better semantic search)
-                try:
-                    langchain_agent.ingest_pdf(text.encode('utf-8'), uploaded_file.name)
-                except:
-                    pass  # Fallback gracefully if ingestion fails
-                
                 st.success(f"✅ Added {uploaded_file.name}")
                 st.rerun()
             else:
@@ -349,8 +391,8 @@ if uploaded_file is not None:
  
 # Display welcome message or chat history
 if not st.session_state.messages:
-    if not st.session_state.uploaded_documents:
-        st.markdown('<div class="subtitle">Drop a PDF or PPTX file to get started, or ask me anything</div>', unsafe_allow_html=True)
+    if not st.session_state.uploaded_pdfs:
+        st.markdown('<div class="subtitle">Drop a PDF or PowerPoint file to get started, or ask me anything</div>', unsafe_allow_html=True)
     else:
         st.markdown(f'<div class="subtitle">{len(st.session_state.uploaded_documents)} document(s) loaded! Ask me anything about them.</div>', unsafe_allow_html=True)
 else:
