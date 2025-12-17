@@ -11,16 +11,6 @@ if not groq_key:
 else:
     print("GROQ key found!")
 
-def ask_question(question):
-    if not groq_key:
-        return "GROQ API key is missing!"
-    client = Groq(api_key=groq_key)
-    chat_completion = client.chat.completions.create(
-        messages=[{"role": "user", "content": f"Answer in the spoken language:\n{question}"}],
-        model="llama-3.3-70b-versatile",
-    )
-    return chat_completion.choices[0].message.content
-
 def answer_with_context(question, context=""):
     if not groq_key:
         return "GROQ API key is missing!"
@@ -30,7 +20,7 @@ def answer_with_context(question, context=""):
             "Answer in the spoken language. \n\n"
             f"Context:\n{context}\n\n"
             f"User question:\n{question}\n\n"
-            "Use the context if it is relevnt to the user question!!"
+            "Use the context if it is relevant to the user question!!"
             "Make lists or bullet points clear, each with their own line."
         )
     else:

@@ -1,0 +1,27 @@
+# Simple sequential tasks for 2-agent workflow
+
+retrieve_task:
+  description: >
+    Retrieve relevant context from the vector database for the question: {question}
+    Use retrieve_context_tool with k=4 to find the most relevant chunks.
+    If context is already provided in inputs, validate and enhance it.
+  expected_output: >
+    Relevant context from documents (PDFs and PowerPoints) with source information and relevance scores.
+    Formatted context string ready for answer generation.
+  agent: rag_agent
+
+answer_task:
+  description: >
+    Generate a comprehensive answer to: {question}
+    Use context from retrieve_task or {context} if provided.
+    Call answer_with_rag_tool with question and context.
+    Automatically generate educational quiz questions when appropriate.
+  expected_output: >
+    Complete answer with:
+    - Clear explanation based on document context (PDF/PPTX)
+    - Optional quiz questions (5 questions) for learning
+    - Proper markdown formatting
+  agent: answer_agent
+  context:
+    - retrieve_task
+

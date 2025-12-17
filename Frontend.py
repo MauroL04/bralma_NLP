@@ -1,16 +1,24 @@
-import subprocess
-import sys
+import os
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
 import streamlit as st
 from pathlib import Path
 import PyPDF2
 from pptx import Presentation
 from datetime import datetime
-from groq_answer_llm import answer_and_maybe_quiz
+import warnings
+
+# Import direct LLM modules + RAG
+import groq_answer_llm
+import langchain_agent
+
+warnings.filterwarnings("ignore", category=SyntaxWarning, module="pysbd")
+warnings.filterwarnings("ignore")
  
  
 # Page configuration
 st.set_page_config(
-    page_title="PDF Chat Assistant",
+    page_title="Document Chat Assistant",
     page_icon="💬",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -353,10 +361,10 @@ uploaded_file = st.file_uploader(
     label_visibility="collapsed"
 )
  
-# Process uploaded file
+# Process uploaded file (PDF or PPTX)
 if uploaded_file is not None:
     # Check if file already exists
-    existing_names = [pdf['filename'] for pdf in st.session_state.uploaded_pdfs]
+    existing_names = [doc['filename'] for doc in st.session_state.uploaded_documents]
    
     if uploaded_file.name not in existing_names:
         with st.spinner(f"Processing {uploaded_file.type}..."):
@@ -386,7 +394,7 @@ if not st.session_state.messages:
     if not st.session_state.uploaded_pdfs:
         st.markdown('<div class="subtitle">Drop a PDF or PowerPoint file to get started, or ask me anything</div>', unsafe_allow_html=True)
     else:
-        st.markdown(f'<div class="subtitle">{len(st.session_state.uploaded_pdfs)} PDF(s) loaded! Ask me anything about the documents.</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="subtitle">{len(st.session_state.uploaded_documents)} document(s) loaded! Ask me anything about them.</div>', unsafe_allow_html=True)
 else:
     # Display chat history
     chat_container = st.container()
