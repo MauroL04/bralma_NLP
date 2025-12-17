@@ -1,7 +1,6 @@
 # bralma_NLP
 Brent, Alex, Mauro. NLP Project
 
-
 ### Maak een nieuwe virtual environment aan (altijd met Python 3.11)
 rm -rf .venv;
 python3.11 -m pip cache purge;
