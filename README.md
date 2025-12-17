@@ -24,7 +24,7 @@ Voor Windows (Git Bash):
 rm -rf .venv
 
 # Als python3.11 in PATH: (anders gebruik volledig pad naar python.exe)
-/c/Users/Brent/AppData/Local/Programs/Python/Python311/python.exe -m venv .venv
+/c/Users/yourusername/AppData/Local/Programs/Python/Python311/python.exe -m venv .venv
 
 # Activeer de venv in Git Bash
 source .venv/Scripts/activate
